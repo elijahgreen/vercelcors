@@ -1,0 +1,16 @@
+{
+  "name": "vercelcors",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "author": "Elijah Green",
+  "devDependencies": {
+    "typescript": "^5.0.4"
+  },
+  "dependencies": {
+    "@vercel/node": "^2.14.0",
+    "axios": "^1.4.0"
+  }
+}
