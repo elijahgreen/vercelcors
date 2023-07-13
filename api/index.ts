@@ -5,6 +5,7 @@ declare global {
   namespace NodeJS {
     interface ProcessEnv {
       CONTENT_TYPE_ALLOWLIST: string;
+      PATH_ALLOWLIST: string;
     }
   }
 }
@@ -50,6 +51,20 @@ const handler = (req: VercelRequest, res: VercelResponse) => {
   let { url } = req.query;
   if (Array.isArray(url)) {
     url = url[0];
+  }
+
+  if (process.env.PATH_ALLOWLIST) {
+    const endpointUrl = new URL(url);
+    const path = endpointUrl.pathname;
+    const pathAllowlist: string[] = JSON.parse(process.env.PATH_ALLOWLIST);
+    if (
+      pathAllowlist.length &&
+      !pathAllowlist.some((p) => new RegExp(p).test(path))
+    ) {
+      res.statusCode = 403;
+      res.send(`Forbidden path: ${path}`);
+      return;
+    }
   }
 
   axios
