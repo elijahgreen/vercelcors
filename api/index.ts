@@ -47,6 +47,11 @@ const handleRequest = (response: AxiosResponse, res: VercelResponse) => {
   response.data.pipe(res);
 };
 
+const handleError = (error: any, res: VercelResponse) => {
+  res.statusCode = error.response.status;
+  res.send(error);
+};
+
 const handler = (req: VercelRequest, res: VercelResponse) => {
   let { url } = req.query;
   if (Array.isArray(url)) {
@@ -70,7 +75,7 @@ const handler = (req: VercelRequest, res: VercelResponse) => {
   axios
     .request({ url: url, method: req.method, responseType: "stream" })
     .then((response) => handleRequest(response, res))
-    .catch((e) => res.send(e));
+    .catch((e) => handleError(e, res));
 };
 
 module.exports = allowCors(handler);
