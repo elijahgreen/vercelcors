@@ -6,6 +6,7 @@ declare global {
     interface ProcessEnv {
       CONTENT_TYPE_ALLOWLIST: string;
       PATH_ALLOWLIST: string;
+      ENDPOINT_ALLOWLIST: string;
     }
   }
 }
@@ -52,24 +53,43 @@ const handleError = (error: any, res: VercelResponse) => {
   res.send(error);
 };
 
+const isEndpointAllowed = (endpoints: string[], url: URL): boolean => {
+  return endpoints.includes(url.host);
+}
+
+const isPathAllowed = (paths: string[], path: string): boolean => {
+  return paths.some((p) => new RegExp(p).test(path));
+}
+
 const handler = (req: VercelRequest, res: VercelResponse) => {
   let { url } = req.query;
   if (Array.isArray(url)) {
     url = url[0];
   }
+  let endpointAllowlist: string[] = [];
+  let pathAllowlist: string[] = [];
 
+  const endpointUrl = new URL(url);
+  const path = endpointUrl.pathname;
+  if (process.env.ENDPOINT_ALLOWLIST) {
+    endpointAllowlist= JSON.parse(process.env.ENDPOINT_ALLOWLIST);
+  }
   if (process.env.PATH_ALLOWLIST) {
-    const endpointUrl = new URL(url);
-    const path = endpointUrl.pathname;
-    const pathAllowlist: string[] = JSON.parse(process.env.PATH_ALLOWLIST);
-    if (
-      pathAllowlist.length &&
-      !pathAllowlist.some((p) => new RegExp(p).test(path))
+    pathAllowlist = JSON.parse(process.env.PATH_ALLOWLIST);
+  }
+
+  if (endpointAllowlist.length) {
+    if (!isEndpointAllowed(endpointAllowlist, endpointUrl) &&
+      !isPathAllowed(pathAllowlist, path)
     ) {
       res.statusCode = 403;
-      res.send(`Forbidden path: ${path}`);
+      res.send(`Forbidden endpoint: ${endpointUrl.host}`);
       return;
     }
+  } else if (pathAllowlist.length && !isPathAllowed(pathAllowlist, path)) {
+    res.statusCode = 403;
+    res.send(`Forbidden path: ${path}`);
+    return;
   }
 
   axios
