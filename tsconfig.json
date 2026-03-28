@@ -18,5 +18,8 @@
   },
   "include": [
     "api/**/*"
+  ],
+  "exclude": [
+    "api/__tests__"
   ]
 }

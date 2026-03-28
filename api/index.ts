@@ -99,3 +99,9 @@ const handler = (req: VercelRequest, res: VercelResponse) => {
 };
 
 module.exports = allowCors(handler);
+module.exports.isEndpointAllowed = isEndpointAllowed;
+module.exports.isPathAllowed = isPathAllowed;
+module.exports.handleRequest = handleRequest;
+module.exports.handleError = handleError;
+module.exports.handler = handler;
+module.exports.allowCors = allowCors;
