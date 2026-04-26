@@ -1,4 +1,4 @@
-import { VercelRequest, VercelResponse } from "@vercel/node";
+import type { VercelRequest, VercelResponse } from "@vercel/node";
 import axios, { AxiosResponse } from "axios";
 
 declare global {
@@ -34,9 +34,10 @@ const handleRequest = (response: AxiosResponse, res: VercelResponse) => {
     const contentTypeAllowlist: string[] = JSON.parse(
       process.env.CONTENT_TYPE_ALLOWLIST
     );
-    const contentType: string = response.headers["content-type"];
+    const contentType = response.headers["content-type"];
     if (
       contentType &&
+      typeof contentType === "string" &&
       !contentTypeAllowlist.some((c) => contentType.includes(c))
     ) {
       res.statusCode = 403;
