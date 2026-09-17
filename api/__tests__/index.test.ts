@@ -222,13 +222,23 @@ describe("handleError", () => {
     expect(res.statusCode).toBe(502);
   });
 
-  it("sends the error object", () => {
+  it("sends a message instead of the error object", () => {
     const res = mockRes();
-    const error = { response: { status: 500 } };
+    const error = { response: { status: 500 }, stack: "at /var/task/x.js" };
 
     handleError(error, res);
 
-    expect(res.send).toHaveBeenCalledWith(error);
+    expect(res.send).toHaveBeenCalledWith("Upstream responded with 500");
+  });
+
+  it("uses 502 when there is no upstream response", () => {
+    const res = mockRes();
+    const error = new Error("connect ECONNREFUSED 169.254.169.254:80");
+
+    handleError(error, res);
+
+    expect(res.statusCode).toBe(502);
+    expect(res.send).toHaveBeenCalledWith("Upstream request failed");
   });
 });
 
@@ -241,11 +251,13 @@ describe("handler", () => {
 
     handler(req, res);
 
-    expect(axios.request).toHaveBeenCalledWith({
-      url: "https://example.com/data",
-      method: "GET",
-      responseType: "stream",
-    });
+    expect(axios.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://example.com/data",
+        method: "GET",
+        responseType: "stream",
+      })
+    );
   });
 
   it("uses first element when url query param is an array", () => {
@@ -340,6 +352,88 @@ describe("handler", () => {
       expect(res.statusCode).toBe(500);
     });
 
-    expect(res.send).toHaveBeenCalledWith(axiosError);
+    expect(res.send).toHaveBeenCalledWith("Upstream responded with 500");
+  });
+
+  it("returns 400 for a missing url", () => {
+    const req = mockReq({ query: {} } as any);
+    const res = mockRes();
+
+    handler(req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(axios.request).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for an unparseable url", () => {
+    const req = mockReq({ query: { url: "not a url" } } as any);
+    const res = mockRes();
+
+    handler(req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(axios.request).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-http protocols", () => {
+    const req = mockReq({ query: { url: "file:///etc/passwd" } } as any);
+    const res = mockRes();
+
+    handler(req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(res.send).toHaveBeenCalledWith("Forbidden protocol: file:");
+    expect(axios.request).not.toHaveBeenCalled();
+  });
+
+  describe("redirects", () => {
+    function getBeforeRedirect() {
+      handler(mockReq({ query: { url: "https://allowed.com/a" } } as any), mockRes());
+      return vi.mocked(axios.request).mock.calls[0][0].beforeRedirect as (
+        options: Record<string, any>
+      ) => void;
+    }
+
+    it("allows a redirect to an allowed host", () => {
+      process.env.ENDPOINT_ALLOWLIST = '["allowed.com"]';
+      const beforeRedirect = getBeforeRedirect();
+
+      expect(() =>
+        beforeRedirect({ protocol: "https:", host: "allowed.com", path: "/b?c=1" })
+      ).not.toThrow();
+    });
+
+    it("blocks a redirect to a host off the allowlist", () => {
+      process.env.ENDPOINT_ALLOWLIST = '["allowed.com"]';
+      const beforeRedirect = getBeforeRedirect();
+
+      expect(() =>
+        beforeRedirect({ protocol: "http:", host: "169.254.169.254", path: "/" })
+      ).toThrow("Forbidden endpoint: 169.254.169.254");
+    });
+
+    it("answers 403 when a redirect was blocked", async () => {
+      process.env.ENDPOINT_ALLOWLIST = '["allowed.com"]';
+      const beforeRedirect = getBeforeRedirect();
+      let thrown: unknown;
+      try {
+        beforeRedirect({ protocol: "https:", host: "evil.com", path: "/" });
+      } catch (e) {
+        thrown = e;
+      }
+      // Mirror how the error arrives: axios wraps follow-redirects' wrapper
+      const wrapped = { cause: { cause: thrown } };
+      vi.mocked(axios.request).mockRejectedValueOnce(wrapped);
+      const res = mockRes();
+
+      handler(mockReq({ query: { url: "https://allowed.com/a" } } as any), res);
+
+      await vi.waitFor(() => {
+        expect(res.statusCode).toBe(403);
+      });
+      expect(res.send).toHaveBeenCalledWith(
+        "Redirect blocked. Forbidden endpoint: evil.com"
+      );
+    });
   });
 });
